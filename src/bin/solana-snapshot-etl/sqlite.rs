@@ -13,6 +13,13 @@ use std::sync::{Arc, Mutex};
 
 use crate::mpl_metadata;
 
+mod mngo_id {
+    solana_program::declare_id!("mv3ekLzLbnVPNxjSKvqBpU3ZeZXPQdEC3bp5MDEBG68");
+}
+mod srm_id {
+    solana_program::declare_id!("9xQeWvG816bUx9EPjHmaT23yvVM2ZWbrrpZb9PusVFin");
+}
+
 pub(crate) type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 
 pub(crate) struct SqliteIndexer {
@@ -96,12 +103,11 @@ impl SqliteIndexer {
         db.execute(
             "\
 CREATE TABLE account  (
-    pubkey BLOB(32) NOT NULL PRIMARY KEY,
-    data_len INTEGER(8) NOT NULL,
+    pubkey BLOB(32) NOT NULL,
+    data BLOB NOT NULL,
+    write_version INTEGER,
     owner BLOB(32) NOT NULL,
-    lamports INTEGER(8) NOT NULL,
-    executable INTEGER(1) NOT NULL,
-    rent_epoch INTEGER(8) NOT NULL
+    PRIMARY KEY(pubkey, write_version)
 );",
             [],
         )?;
@@ -204,13 +210,16 @@ impl<'a> AppendVecConsumer for Worker<'a> {
 
 impl<'a> Worker<'a> {
     fn insert_account(&mut self, account: &StoredAccountMeta) -> Result<()> {
+        if account.account_meta.owner != mngo_id::id() && account.account_meta.owner != srm_id::id() {
+            return Ok(());
+        }
         self.insert_account_meta(account)?;
-        if account.account_meta.owner == spl_token::id() {
-            self.insert_token(account)?;
-        }
-        if account.account_meta.owner == mpl_metadata::id() {
-            self.insert_token_metadata(account)?;
-        }
+        //if account.account_meta.owner == spl_token::id() {
+        //    self.insert_token(account)?;
+        //}
+        //if account.account_meta.owner == mpl_metadata::id() {
+        //    self.insert_token_metadata(account)?;
+        //}
         self.progress.accounts_counter.inc();
         Ok(())
     }
@@ -218,16 +227,14 @@ impl<'a> Worker<'a> {
     fn insert_account_meta(&mut self, account: &StoredAccountMeta) -> Result<()> {
         let mut account_insert = self.db.prepare_cached(
             "\
-INSERT OR REPLACE INTO account (pubkey, data_len, owner, lamports, executable, rent_epoch)
-    VALUES (?, ?, ?, ?, ?, ?);",
+INSERT INTO account (pubkey, data, owner, write_version)
+    VALUES (?, ?, ?, ?);",
         )?;
         account_insert.insert(params![
             account.meta.pubkey.as_ref(),
-            account.meta.data_len as i64,
+            &account.data,
             account.account_meta.owner.as_ref(),
-            account.account_meta.lamports as i64,
-            account.account_meta.executable,
-            account.account_meta.rent_epoch as i64,
+            &account.meta.write_version
         ])?;
         Ok(())
     }

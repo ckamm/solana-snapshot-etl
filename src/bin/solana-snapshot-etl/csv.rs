@@ -15,8 +15,14 @@ pub(crate) struct CsvDumper {
 struct Record {
     pubkey: String,
     owner: String,
-    data_len: u64,
-    lamports: u64,
+    data: String,
+}
+
+mod mngo_id {
+    solana_program::declare_id!("mv3ekLzLbnVPNxjSKvqBpU3ZeZXPQdEC3bp5MDEBG68");
+}
+mod srm_id {
+    solana_program::declare_id!("9xQeWvG816bUx9EPjHmaT23yvVM2ZWbrrpZb9PusVFin");
 }
 
 impl CsvDumper {
@@ -46,11 +52,14 @@ impl CsvDumper {
     }
 
     pub(crate) fn dump_account(&mut self, account: StoredAccountMeta) {
+        if account.account_meta.owner != mngo_id::id() && account.account_meta.owner != srm_id::id() {
+            return;
+        }
+
         let record = Record {
             pubkey: account.meta.pubkey.to_string(),
             owner: account.account_meta.owner.to_string(),
-            data_len: account.meta.data_len,
-            lamports: account.account_meta.lamports,
+            data: base64::encode(account.data),
         };
         if self.writer.serialize(record).is_err() {
             std::process::exit(1); // if stdout closes, silently exit
