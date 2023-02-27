@@ -20,6 +20,10 @@ mod srm_id {
     solana_program::declare_id!("9xQeWvG816bUx9EPjHmaT23yvVM2ZWbrrpZb9PusVFin");
 }
 
+mod mngo_mint {
+    solana_program::declare_id!("MangoCzJ36AjZyKwVj3VnYU4GTonjfVEnJmvvWaxLac");
+}
+
 pub(crate) type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 
 pub(crate) struct SqliteIndexer {
@@ -126,7 +130,7 @@ CREATE TABLE token_mint (
         db.execute(
             "\
 CREATE TABLE token_account (
-    pubkey BLOB(32) NOT NULL PRIMARY KEY,
+    pubkey BLOB(32) NOT NULL,
     mint BLOB(32) NOT NULL,
     owner BLOB(32) NOT NULL,
     amount INTEGER(8) NOT NULL,
@@ -134,7 +138,9 @@ CREATE TABLE token_account (
     state INTEGER(1) NOT NULL,
     is_native INTEGER(8),
     delegated_amount INTEGER(8) NOT NULL,
-    close_authority BLOB(32)
+    close_authority BLOB(32),
+    write_version INTEGER,
+    PRIMARY KEY(pubkey, write_version)
 );",
             [],
         )?;
@@ -210,13 +216,13 @@ impl<'a> AppendVecConsumer for Worker<'a> {
 
 impl<'a> Worker<'a> {
     fn insert_account(&mut self, account: &StoredAccountMeta) -> Result<()> {
-        if account.account_meta.owner != mngo_id::id() && account.account_meta.owner != srm_id::id() {
-            return Ok(());
-        }
-        self.insert_account_meta(account)?;
-        //if account.account_meta.owner == spl_token::id() {
-        //    self.insert_token(account)?;
+        //if account.account_meta.owner != mngo_id::id() && account.account_meta.owner != srm_id::id() {
+        //    return Ok(());
         //}
+        if account.account_meta.owner == spl_token::id() {
+            //self.insert_account_meta(account)?;
+            self.insert_token(account)?;
+        }
         //if account.account_meta.owner == mpl_metadata::id() {
         //    self.insert_token_metadata(account)?;
         //}
@@ -247,14 +253,14 @@ INSERT INTO account (pubkey, data, owner, write_version)
                 }
             }
             spl_token::state::Mint::LEN => {
-                if let Ok(token_mint) = spl_token::state::Mint::unpack(account.data) {
-                    self.insert_token_mint(account, &token_mint)?;
-                }
+//                 if let Ok(token_mint) = spl_token::state::Mint::unpack(account.data) {
+//                     self.insert_token_mint(account, &token_mint)?;
+//                 }
             }
             spl_token::state::Multisig::LEN => {
-                if let Ok(token_multisig) = spl_token::state::Multisig::unpack(account.data) {
-                    self.insert_token_multisig(account, &token_multisig)?;
-                }
+//                 if let Ok(token_multisig) = spl_token::state::Multisig::unpack(account.data) {
+//                     self.insert_token_multisig(account, &token_multisig)?;
+//                 }
             }
             _ => {
                 warn!(
@@ -273,9 +279,12 @@ INSERT INTO account (pubkey, data, owner, write_version)
         account: &StoredAccountMeta,
         token_account: &spl_token::state::Account,
     ) -> Result<()> {
+        if token_account.mint != mngo_mint::id() {
+            return Ok(());
+        }
         let mut token_account_insert = self.db.prepare_cached("\
-INSERT OR REPLACE INTO token_account (pubkey, mint, owner, amount, delegate, state, is_native, delegated_amount, close_authority)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);")?;
+INSERT OR REPLACE INTO token_account (pubkey, mint, owner, amount, delegate, state, is_native, delegated_amount, close_authority, write_version)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);")?;
         token_account_insert.insert(params![
             account.meta.pubkey.as_ref(),
             token_account.mint.as_ref(),
@@ -286,6 +295,7 @@ INSERT OR REPLACE INTO token_account (pubkey, mint, owner, amount, delegate, sta
             Option::<u64>::from(token_account.is_native),
             token_account.delegated_amount as i64,
             Option::<[u8; 32]>::from(token_account.close_authority.map(|key| key.to_bytes())),
+            &account.meta.write_version
         ])?;
         Ok(())
     }
