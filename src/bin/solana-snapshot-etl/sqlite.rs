@@ -130,15 +130,15 @@ CREATE TABLE token_mint (
         db.execute(
             "\
 CREATE TABLE token_account (
-    pubkey BLOB(32) NOT NULL,
-    mint BLOB(32) NOT NULL,
-    owner BLOB(32) NOT NULL,
+    pubkey TEXT NOT NULL,
+    mint TEXT NOT NULL,
+    owner TEXT NOT NULL,
     amount INTEGER(8) NOT NULL,
-    delegate BLOB(32),
+    delegate TEXT,
     state INTEGER(1) NOT NULL,
     is_native INTEGER(8),
     delegated_amount INTEGER(8) NOT NULL,
-    close_authority BLOB(32),
+    close_authority TEXT,
     write_version INTEGER,
     PRIMARY KEY(pubkey, write_version)
 );",
@@ -286,15 +286,15 @@ INSERT INTO account (pubkey, data, owner, write_version)
 INSERT OR REPLACE INTO token_account (pubkey, mint, owner, amount, delegate, state, is_native, delegated_amount, close_authority, write_version)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);")?;
         token_account_insert.insert(params![
-            account.meta.pubkey.as_ref(),
-            token_account.mint.as_ref(),
-            token_account.owner.as_ref(),
+            account.meta.pubkey.to_string(),
+            token_account.mint.to_string(),
+            token_account.owner.to_string(),
             token_account.amount as i64,
-            Option::<[u8; 32]>::from(token_account.delegate.map(|key| key.to_bytes())),
+            Option::<String>::from(token_account.delegate.map(|key| key.to_string())),
             token_account.state as u8,
             Option::<u64>::from(token_account.is_native),
             token_account.delegated_amount as i64,
-            Option::<[u8; 32]>::from(token_account.close_authority.map(|key| key.to_bytes())),
+            Option::<String>::from(token_account.close_authority.map(|key| key.to_string())),
             &account.meta.write_version
         ])?;
         Ok(())
